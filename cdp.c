@@ -8,15 +8,124 @@
 #include <linux/types.h>
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
 
 #include "cdp_ioctl.h"
 
 static int cdp_major;
 static atomic_t cdp_misc_ready = ATOMIC_INIT(1);
 
-static long cdp_misc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static int cdp_dev_create(struct cdp_ioctl *param)
 {
 	return 0;
+}
+
+static int cdp_validate_params(unsigned int cmd, struct cdp_ioctl *param)
+{
+	switch (cmd) {
+		case CDP_VERSION_CMD:
+			return 0;
+			break;
+		case CDP_DEV_CREATE_CMD:
+			if (!param->cdp_host_major_num || !param->cdp_repository_major_num || !param->cdp_metadata_major_num) {
+				printk(KERN_ERR "CDP: invalid disk major number.\n");
+				return -EINVAL;
+			}
+			break;
+		default:
+			break;
+	}
+
+	param->name[CDP_NAME_LEN - 1] = '\0';
+
+	return 0;
+}
+
+typedef int (*ioctl_fn)(struct cdp_ioctl *param);
+
+/*
+ * Dispatch all kinds of ioctl commands
+ */
+static ioctl_fn ioctl_lookup(unsigned int cmd)
+{
+	static struct {
+		unsigned int cmd;
+		ioctl_fn fn;
+	}_ioctls[] =
+	{
+		{CDP_VERSION_CMD, 0},
+		{CDP_DEV_CREATE_CMD, cdp_dev_create}
+	};
+
+	return (cmd >= ARRAY_SIZE(_ioctls)) ? NULL : _ioctls[cmd].fn;
+}
+
+static int cdp_copy_params(struct cdp_ioctl __user *user, struct cdp_ioctl **pparam)
+{
+	struct cdp_ioctl *cdpi;
+
+	cdpi = kmalloc(sizeof(struct cdp_ioctl), GFP_KERNEL);
+	if (!cdpi)
+		return -ENOMEM;
+
+	if (copy_from_user(cdpi, user, sizeof(struct cdp_ioctl))) {
+		kfree(cdpi);
+		return -EFAULT;
+	}
+
+	*pparam = cdpi;
+	return 0;
+}
+
+static void cdp_free_params(struct cdp_ioctl *param)
+{
+	kfree(param);
+}
+
+static int ioctl_main(unsigned int command, struct cdp_ioctl __user *user)
+{
+	int ret;
+	unsigned int cmd;
+	struct cdp_ioctl *param = NULL;
+	ioctl_fn fn = NULL;
+
+	// only root can play with this
+	if (!capable(CAP_SYS_ADMIN))
+		return -EACCES;
+
+	if (_IOC_TYPE(command) != CDP_IOC_MAGIC)
+		return -ENOTTY;
+
+	cmd = _IOC_NR(command);
+
+	if(cmd == CDP_VERSION_CMD)
+		return 0;
+
+	fn = ioctl_lookup(cmd);
+	if (!fn) {
+		printk(KERN_ERR "CDP: unknown command 0x%x.\n", cmd);
+		return -ENOTTY;
+	}
+
+	ret = cdp_copy_params(user, &param);
+	if (ret < 0)
+		goto out;
+
+	ret = cdp_validate_params(cmd, param);
+	if (ret < 0)
+		goto out;
+
+	ret = fn(param);
+
+out:
+	cdp_free_params(param);
+	return ret;
+}
+
+static long cdp_misc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	return (long)ioctl_main(cmd, (struct cdp_ioctl __user *)arg);
 }
 
 /*
