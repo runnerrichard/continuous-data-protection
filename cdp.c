@@ -123,9 +123,9 @@ out:
 	return ret;
 }
 
-static long cdp_misc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long cdp_misc_ioctl(struct file *file, unsigned int command, unsigned long arg)
 {
-	return (long)ioctl_main(cmd, (struct cdp_ioctl __user *)arg);
+	return (long)ioctl_main(command, (struct cdp_ioctl __user *)arg);
 }
 
 /*
