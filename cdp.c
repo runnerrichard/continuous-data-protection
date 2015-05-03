@@ -20,6 +20,7 @@
 
 static int cdp_major;
 static atomic_t cdp_misc_ready = ATOMIC_INIT(1);
+static struct cdp_device *cdp_device = NULL;
 
 static void cdp_make_request(struct request_queue *q, struct bio *bio)
 {
@@ -46,13 +47,13 @@ static const struct block_device_operations cdp_blk_fops = {
 	.owner = THIS_MODULE
 };
 
-static int cdp_dev_create(struct cdp_ioctl *param)
+static struct cdp_device *cdp_alloc_dev(void)
 {
 	struct cdp_device *cd = kzalloc(sizeof(*cd), GFP_KERNEL);
 
 	if (!cd) {
 		printk(KERN_ERR "CDP: unable to allocate device, out of memory.\n");
-		return -ENOMEM;
+		return NULL;
 	}
 
 	if (!try_module_get(THIS_MODULE))
@@ -83,7 +84,7 @@ static int cdp_dev_create(struct cdp_ioctl *param)
 	printk(KERN_INFO "CDP: create cdp device \"%s\" successfully.\n", cd->disk->disk_name);
 #endif
 
-	return 0;
+	return cd;
 
 bad_disk:
 	blk_cleanup_queue(cd->queue);
@@ -91,7 +92,18 @@ bad_queue:
 	module_put(THIS_MODULE);
 bad_module_get:
 	kfree(cd);
-	return -ENXIO;
+	return NULL;
+}
+
+static int cdp_dev_create(struct cdp_ioctl *param)
+{
+	struct cdp_device *cd = cdp_alloc_dev();
+
+	if (!cd)
+		return -ENXIO;
+
+	cdp_device = cd;
+	return 0;
 }
 
 static int cdp_validate_params(unsigned int cmd, struct cdp_ioctl *param)
