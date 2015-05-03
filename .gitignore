@@ -13,3 +13,6 @@ modules.order
 
 # C tags
 tags
+
+# tmp file
+tmp/
