@@ -93,8 +93,12 @@ bad_module_get:
 
 static int cdp_dev_create(struct cdp_ioctl *param)
 {
-	struct cdp_device *cd = cdp_alloc_dev();
+	struct cdp_device *cd = NULL;
 
+	if(cdp_device)
+		return -EBUSY;
+
+	cd = cdp_alloc_dev();
 	if (!cd)
 		return -ENXIO;
 
