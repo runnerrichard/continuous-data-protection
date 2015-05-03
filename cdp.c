@@ -21,38 +21,6 @@
 static int cdp_major;
 static atomic_t cdp_misc_ready = ATOMIC_INIT(1);
 
-/*
- * An IDR is used to keep track of allocated minor numbers.
- */
-static DEFINE_IDR(_minor_idr);
-
-static DEFINE_SPINLOCK(_minor_lock);
-
-
-static void free_minor(int minor)
-{
-	spin_lock(&_minor_lock);
-	idr_remove(&_minor_idr, minor);
-	spin_unlock(&_minor_lock);
-}
-
-static int next_free_minor(int *minor)
-{
-	int r;
-
-	idr_preload(GFP_KERNEL);
-	spin_lock(&_minor_lock);
-
-	r = idr_alloc(&_minor_idr, MINOR_ALLOCED, 0, 1 << MINORBITS, GFP_NOWAIT);
-
-	spin_unlock(&_minor_lock);
-	idr_preload_end();
-	if (r < 0)
-		return r;
-	*minor = r;
-	return 0;
-}
-
 static void cdp_make_request(struct request_queue *q, struct bio *bio)
 {
 }
@@ -80,8 +48,6 @@ static const struct block_device_operations cdp_blk_fops = {
 
 static int cdp_dev_create(struct cdp_ioctl *param)
 {
-	int ret;
-	int minor;
 	struct cdp_device *cd = kzalloc(sizeof(*cd), GFP_KERNEL);
 
 	if (!cd) {
@@ -91,11 +57,6 @@ static int cdp_dev_create(struct cdp_ioctl *param)
 
 	if (!try_module_get(THIS_MODULE))
 		goto bad_module_get;
-
-	// get a minor number for the dev
-	ret = next_free_minor(&minor);
-	if (ret < 0)
-		goto bad_minor;
 
 	spin_lock_init(&cd->lock);
 
@@ -111,11 +72,11 @@ static int cdp_dev_create(struct cdp_ioctl *param)
 		goto bad_disk;
 
 	cd->disk->major = cdp_major;
-	cd->disk->first_minor = minor;
+	cd->disk->first_minor = 0;
 	cd->disk->fops = &cdp_blk_fops;
 	cd->disk->queue = cd->queue;
 	cd->disk->private_data = cd;
-	sprintf(cd->disk->disk_name, "cdp-%d", minor);
+	sprintf(cd->disk->disk_name, "cdp-0");
 	add_disk(cd->disk);
 
 #if DEBUG_CDP
@@ -127,8 +88,6 @@ static int cdp_dev_create(struct cdp_ioctl *param)
 bad_disk:
 	blk_cleanup_queue(cd->queue);
 bad_queue:
-	free_minor(minor);
-bad_minor:
 	module_put(THIS_MODULE);
 bad_module_get:
 	kfree(cd);
