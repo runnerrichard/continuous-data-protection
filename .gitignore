@@ -1,0 +1,15 @@
+# Object files
+*.ko.cmd
+*.o.cmd
+*.ko
+*.o
+*.mod.c
+*.mod.o
+
+# Module build outputs
+.tmp_versions/
+Module.symvers
+modules.order
+
+# C tags
+tags

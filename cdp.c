@@ -16,6 +16,8 @@
 #include "cdp.h"
 #include "cdp_ioctl.h"
 
+#define DEBUG_CDP 1
+
 static int cdp_major;
 static atomic_t cdp_misc_ready = ATOMIC_INIT(1);
 
@@ -116,6 +118,10 @@ static int cdp_dev_create(struct cdp_ioctl *param)
 	sprintf(cd->disk->disk_name, "cdp-%d", minor);
 	add_disk(cd->disk);
 
+#if DEBUG_CDP
+	printk(KERN_INFO "CDP: create cdp device \"%s\" successfully.\n", cd->disk->disk_name);
+#endif
+
 	return 0;
 
 bad_disk:
@@ -201,6 +207,9 @@ static int ioctl_main(unsigned int command, struct cdp_ioctl __user *user)
 	// only root can play with this
 	if (!capable(CAP_SYS_ADMIN))
 		return -EACCES;
+
+	if (!user)
+		return -EINVAL;
 
 	if (_IOC_TYPE(command) != CDP_IOC_MAGIC)
 		return -ENOTTY;
@@ -289,6 +298,10 @@ int cdp_module_register(void)
 
 	cdp_major = ret;
 
+#if DEBUG_CDP
+	printk(KERN_INFO "CDP: Get major number : %d\n", cdp_major);
+#endif
+
 	return 0;
 }
 
@@ -306,6 +319,10 @@ static int __init cdp_misc_init(void)
 		cdp_module_unregister();
 		return ret;
 	}
+
+#if DEBUG_CDP
+	printk(KERN_INFO "CDP: register misc device successfully.\n");
+#endif
 	
 	return 0;
 }
@@ -316,6 +333,10 @@ static void __exit cdp_misc_exit(void)
 		printk(KERN_ERR "CDP: cannot deregister misc device.\n");
 
 	cdp_module_unregister();
+
+#if DEBUG_CDP
+	printk(KERN_INFO "CDP: unregister misc device successfully.\n");
+#endif
 }
 
 module_init(cdp_misc_init);
