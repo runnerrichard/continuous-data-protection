@@ -80,10 +80,6 @@ static struct cdp_device *cdp_alloc_dev(void)
 	sprintf(cd->disk->disk_name, "cdp-0");
 	add_disk(cd->disk);
 
-#if DEBUG_CDP
-	printk(KERN_INFO "CDP: create cdp device \"%s\" successfully.\n", cd->disk->disk_name);
-#endif
-
 	return cd;
 
 bad_disk:
@@ -103,6 +99,45 @@ static int cdp_dev_create(struct cdp_ioctl *param)
 		return -ENXIO;
 
 	cdp_device = cd;
+
+#if DEBUG_CDP
+	printk(KERN_INFO "CDP: create cdp device \"%s\" successfully.\n", cd->disk->disk_name);
+#endif
+
+	return 0;
+}
+
+static int cdp_free_dev(void)
+{
+	struct cdp_device *cd = cdp_device;
+
+	if (!cd || !cd->disk || !cd->queue)
+		return -EFAULT;
+
+	del_gendisk(cd->disk);
+	cd->disk->private_data = NULL;
+	put_disk(cd->disk);
+
+	cd->queue->queuedata = NULL;
+	blk_cleanup_queue(cd->queue);
+
+	module_put(THIS_MODULE);
+	kfree(cd);
+	cdp_device = NULL;
+
+	return 0;
+}
+
+static int cdp_dev_remove(struct cdp_ioctl *param)
+{
+	int ret = cdp_free_dev();
+
+	if (ret < 0)
+		return ret;
+
+#if DEBUG_CDP
+	printk(KERN_INFO "CDP: remove cdp device successfully.\n");
+#endif
 	return 0;
 }
 
@@ -140,7 +175,8 @@ static ioctl_fn ioctl_lookup(unsigned int cmd)
 	}_ioctls[] =
 	{
 		{CDP_VERSION_CMD, 0},
-		{CDP_DEV_CREATE_CMD, cdp_dev_create}
+		{CDP_DEV_CREATE_CMD, cdp_dev_create},
+		{CDP_DEV_REMOVE_CMD, cdp_dev_remove}
 	};
 
 	return (cmd >= ARRAY_SIZE(_ioctls)) ? NULL : _ioctls[cmd].fn;

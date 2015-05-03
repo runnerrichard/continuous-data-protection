@@ -21,12 +21,14 @@ struct cdp_ioctl {
 
 enum {
 	CDP_VERSION_CMD    = 0,
-	CDP_DEV_CREATE_CMD = 1
+	CDP_DEV_CREATE_CMD = 1,
+	CDP_DEV_REMOVE_CMD = 2
 };
 
 #define CDP_IOC_MAGIC 'G'
 
-#define CDP_VERSION    _IOR(CDP_IOC_MAGIC,CDP_VERSION_CMD,struct cdp_ioctl)
-#define CDP_DEV_CREATE _IOWR(CDP_IOC_MAGIC,CDP_DEV_CREATE_CMD,struct cdp_ioctl)
+#define CDP_VERSION    _IOR(CDP_IOC_MAGIC, CDP_VERSION_CMD, struct cdp_ioctl)
+#define CDP_DEV_CREATE _IOWR(CDP_IOC_MAGIC, CDP_DEV_CREATE_CMD, struct cdp_ioctl)
+#define CDP_DEV_REMOVE _IOWR(CDP_IOC_MAGIC, CDP_DEV_REMOVE_CMD, struct cdp_ioctl)
 
 #endif
