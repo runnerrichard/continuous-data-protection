@@ -60,6 +60,8 @@ static struct cdp_device *cdp_alloc_dev(void)
 		goto bad_module_get;
 
 	spin_lock_init(&cd->lock);
+	atomic_set(&cd->holders, 1);
+	atomic_set(&cd->open_count, 0);
 
 	cd->queue = blk_alloc_queue(GFP_KERNEL);
 	if (!cd->queue)
