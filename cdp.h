@@ -1,12 +1,18 @@
 #ifndef CDP_H
 #define CDP_H
 
-#define MINOR_ALLOCED ((void *)-1)
+/*
+ * Bits for the cd->flags field.
+ */
+#define CDF_FREEING 3
+#define CDF_DELETING 4
 
 struct cdp_device {
 	spinlock_t lock;
 	atomic_t holders;
 	atomic_t open_count;
+
+	unsigned long flags;
 
 	struct gendisk *disk;
 	struct request_queue *queue;

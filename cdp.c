@@ -12,6 +12,7 @@
 #include <linux/uaccess.h>
 #include <linux/idr.h>
 #include <linux/blkdev.h>
+#include <linux/delay.h>
 
 #include "cdp.h"
 #include "cdp_ioctl.h"
@@ -21,6 +22,17 @@
 static int cdp_major;
 static atomic_t cdp_misc_ready = ATOMIC_INIT(1);
 static struct cdp_device *cdp_device = NULL;
+
+void cdp_get(struct cdp_device *cd)
+{
+	atomic_inc(&cd->holders);
+	BUG_ON(test_bit(CDF_FREEING, &cd->flags));
+}
+
+void cdp_put(struct cdp_device *cd)
+{
+	atomic_dec(&cd->holders);
+}
 
 static void cdp_make_request(struct request_queue *q, struct bio *bio)
 {
@@ -113,33 +125,66 @@ static int cdp_dev_create(struct cdp_ioctl *param)
 	return 0;
 }
 
-static int cdp_free_dev(void)
+static void cdp_free_dev(struct cdp_device *cd)
 {
-	struct cdp_device *cd = cdp_device;
+	spin_lock(&cd->lock);
+	set_bit(CDF_FREEING, &cd->flags);
+	spin_unlock(&cd->lock);
 
-	if (!cd || !cd->disk || !cd->queue)
-		return -EFAULT;
+	while(atomic_read(&cd->holders))
+		msleep(1);
 
 	del_gendisk(cd->disk);
+
+	spin_lock(&cd->lock);
 	cd->disk->private_data = NULL;
+	spin_unlock(&cd->lock);
+
 	put_disk(cd->disk);
 
+	spin_lock(&cd->lock);
 	cd->queue->queuedata = NULL;
+	spin_unlock(&cd->lock);
+
 	blk_cleanup_queue(cd->queue);
 
 	module_put(THIS_MODULE);
 	kfree(cd);
-	cdp_device = NULL;
 
 	return 0;
 }
 
+int cdp_lock_for_deletion(struct cdp_device *cd)
+{
+	int ret = 0;
+
+	spin_lock(&cd->lock);
+
+	if (atomic_read(&cdp_device->open_count))
+		ret = -EBUSY;
+	else
+		set_bit(CDF_DELETING, &cd->flags);
+
+	spin_unlock(&cd->lock);
+
+	return ret;
+}
+
 static int cdp_dev_remove(struct cdp_ioctl *param)
 {
-	int ret = cdp_free_dev();
+	int ret = 0;
 
-	if (ret < 0)
+	if (!cdp_device)
+		return -EFAULT;
+
+	ret = cdp_lock_for_deletion(cdp_device);
+	if (ret)
 		return ret;
+
+	cdp_put(cdp_device);
+	cdp_free_dev(cdp_device);
+
+	cdp_device = NULL;
 
 #if DEBUG_CDP
 	printk(KERN_INFO "CDP: remove cdp device successfully.\n");
