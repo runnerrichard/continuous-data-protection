@@ -57,7 +57,7 @@ static int cdp_blk_open(struct block_device *bdev, fmode_t mode)
 
 out:
 	spin_unlock(&cd->lock);
-	return md ? 0 : -ENXIO;
+	return cd ? 0 : -ENXIO;
 }
 
 static void cdp_blk_close(struct gendisk *disk, fmode_t mode)
@@ -171,8 +171,6 @@ static void cdp_free_dev(struct cdp_device *cd)
 
 	module_put(THIS_MODULE);
 	kfree(cd);
-
-	return 0;
 }
 
 int cdp_lock_for_deletion(struct cdp_device *cd)
