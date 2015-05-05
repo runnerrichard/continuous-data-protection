@@ -26,7 +26,7 @@ static struct cdp_device *cdp_device = NULL;
 void cdp_get(struct cdp_device *cd)
 {
 	atomic_inc(&cd->holders);
-	BUG_ON(test_bit(CDF_FREEING, &cd->flags));
+	BUG_ON(test_bit(CDF_DELETING, &cd->flags));
 }
 
 void cdp_put(struct cdp_device *cd)
@@ -40,11 +40,36 @@ static void cdp_make_request(struct request_queue *q, struct bio *bio)
 
 static int cdp_blk_open(struct block_device *bdev, fmode_t mode)
 {
-	return 0;
+	struct cdp_device *cd;
+
+	cd = bdev->bd_disk->private_data;
+	if (!cd)
+		return -ENXIO;
+
+	spin_lock(&cd->lock);
+	if (test_bit(CDF_DELETING, &cd->flags)) {
+		cd = NULL;
+		goto out;
+	}
+
+	cdp_get(cd);
+	atomic_inc(&cd->open_count);
+
+out:
+	spin_unlock(&cd->lock);
+	return md ? 0 : -ENXIO;
 }
 
 static void cdp_blk_close(struct gendisk *disk, fmode_t mode)
 {
+	struct cdp_device *cd = disk->private_data;
+
+	spin_lock(&cd->lock);
+
+	atomic_dec(&cd->open_count);
+	cdp_put(cd);
+
+	spin_unlock(&cd->lock);
 }
 
 static int cdp_blk_ioctl(struct block_device *bdev, fmode_t mode, unsigned int cmd, unsigned long arg)
@@ -127,10 +152,6 @@ static int cdp_dev_create(struct cdp_ioctl *param)
 
 static void cdp_free_dev(struct cdp_device *cd)
 {
-	spin_lock(&cd->lock);
-	set_bit(CDF_FREEING, &cd->flags);
-	spin_unlock(&cd->lock);
-
 	while(atomic_read(&cd->holders))
 		msleep(1);
 

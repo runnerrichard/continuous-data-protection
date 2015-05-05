@@ -4,7 +4,6 @@
 /*
  * Bits for the cd->flags field.
  */
-#define CDF_FREEING 3
 #define CDF_DELETING 4
 
 struct cdp_device {
